@@ -1,7 +1,7 @@
 # Binary
-ttab
-ttab.exe
-ttab-*
+ttag
+ttag.exe
+ttag-*
 
 # Config (created at runtime)
 .terminal_tagger.json

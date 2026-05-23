@@ -1,15 +1,15 @@
 #!/usr/bin/env pwsh
-# install.ps1 — Install ttab on Windows
-# Usage: irm https://raw.githubusercontent.com/dpkay-io/ttab/main/install.ps1 | iex
+# install.ps1 — Install ttag on Windows
+# Usage: irm https://raw.githubusercontent.com/dpkay-io/ttag/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$repo = "dpkay-io/ttab"
+$repo = "dpkay-io/ttag"
 $installDir = Join-Path $HOME ".terminal_tagger\bin"
-$binaryName = "ttab.exe"
+$binaryName = "ttag.exe"
 
 Write-Host ""
-Write-Host "  ttab installer" -ForegroundColor Cyan
+Write-Host "  ttag installer" -ForegroundColor Cyan
 Write-Host "  ─────────────────────────────" -ForegroundColor DarkGray
 Write-Host ""
 
@@ -32,7 +32,7 @@ $releaseUrl = "https://api.github.com/repos/$repo/releases/latest"
 
 try {
     $release = Invoke-RestMethod -Uri $releaseUrl -Headers @{
-        "User-Agent" = "ttab-installer"
+        "User-Agent" = "ttag-installer"
         "Accept"     = "application/vnd.github+json"
     }
 } catch {
@@ -41,7 +41,7 @@ try {
     exit 1
 }
 
-$assetName = "ttab-windows-$arch.exe"
+$assetName = "ttag-windows-$arch.exe"
 $asset = $release.assets | Where-Object { $_.name -eq $assetName }
 
 if (-not $asset) {
@@ -80,6 +80,6 @@ Write-Host "  Installing shell hook..." -ForegroundColor DarkGray
 & $targetPath install --profile $PROFILE
 
 Write-Host ""
-Write-Host "  ✓ ttab installed successfully!" -ForegroundColor Green
+Write-Host "  ✓ ttag installed successfully!" -ForegroundColor Green
 Write-Host "  Restart your terminal to activate." -ForegroundColor Yellow
 Write-Host ""

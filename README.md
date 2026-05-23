@@ -1,8 +1,8 @@
-# ttab — Terminal Tagger
+# ttag — Terminal Tab Tagger
 
 Dynamically color your terminal tabs and set titles based on your current directory. Zero-latency, zero-dependency, cross-platform.
 
-`ttab` injects a lightweight hook into your shell prompt. When you `cd` into a tagged directory, it instantly recolors the tab and updates the title — so you always know where you are at a glance.
+`ttag` injects a lightweight hook into your shell prompt. When you `cd` into a tagged directory, it instantly recolors the tab and updates the title — so you always know where you are at a glance.
 
 ## Supported Terminals
 
@@ -18,13 +18,13 @@ Dynamically color your terminal tabs and set titles based on your current direct
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/dpkay-io/ttab/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/dpkay-io/ttag/main/install.ps1 | iex
 ```
 
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/dpkay-io/ttab/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/dpkay-io/ttag/main/install.sh | sh
 ```
 
 ## Usage
@@ -34,14 +34,14 @@ curl -fsSL https://raw.githubusercontent.com/dpkay-io/ttab/main/install.sh | sh
 Navigate to any directory and tag it with a color:
 
 ```bash
-ttab set --color "#ff6b6b" --title "API"
+ttag set --color "#ff6b6b" --title "API"
 ```
 
 The `--title` flag is optional. If omitted, the folder name is used automatically.
 If the directory is already tagged or if it inherits a color from a parent directory, the `--color` flag is also optional. You can just set a new title:
 
 ```bash
-ttab set --title "Just Title"
+ttag set --title "Just Title"
 ```
 
 ### Clear a tag
@@ -49,13 +49,13 @@ ttab set --title "Just Title"
 Remove the color tag from the current directory:
 
 ```bash
-ttab clear
+ttag clear
 ```
 
 You can also clear a specific directory without navigating to it:
 
 ```bash
-ttab clear ~/projects/api
+ttag clear ~/projects/api
 ```
 
 ### List tags
@@ -63,12 +63,12 @@ ttab clear ~/projects/api
 View all currently tagged directories:
 
 ```bash
-ttab list
+ttag list
 ```
 
 ### How it works
 
-Once installed, `ttab` adds a tiny hook to your shell prompt. Every time you change directories, it:
+Once installed, `ttag` adds a tiny hook to your shell prompt. Every time you change directories, it:
 
 1. Checks `~/.terminal_tagger.json` for a matching path
 2. Walks parent directories for inherited rules (tag `~/projects` and every subdirectory inherits it)
@@ -80,22 +80,22 @@ Once installed, `ttab` adds a tiny hook to your shell prompt. Every time you cha
 ```bash
 # Tag your API project red
 cd ~/projects/api
-ttab set --color "#ff6b6b" --title "API"
+ttag set --color "#ff6b6b" --title "API"
 
 # Tag all projects with a base color (child dirs inherit)
 cd ~/projects
-ttab set --color "#4ecdc4" --title "Projects"
+ttag set --color "#4ecdc4" --title "Projects"
 
 # Clear tagging
-ttab clear
+ttag clear
 
 # Manually trigger the hook (usually automatic)
-ttab hook /path/to/directory
+ttag hook /path/to/directory
 ```
 
 ## Configuration
 
-Tags are stored in `~/.config/ttab/config.json` (Linux/macOS) or `%APPDATA%\ttab\config.json` (Windows):
+Tags are stored in `~/.config/ttag/config.json` (Linux/macOS) or `%APPDATA%\ttag\config.json` (Windows):
 
 ```json
 {
@@ -110,7 +110,7 @@ Tags are stored in `~/.config/ttab/config.json` (Linux/macOS) or `%APPDATA%\ttab
 }
 ```
 
-You can edit this file directly if you prefer, or use the `ttab list` command to view it.
+You can edit this file directly if you prefer, or use the `ttag list` command to view it.
 
 ## Shell Support
 
@@ -123,7 +123,7 @@ You can edit this file directly if you prefer, or use the `ttab list` command to
 ## Building from Source
 
 ```bash
-go build -ldflags="-s -w" -o ttab .
+go build -ldflags="-s -w" -o ttag .
 ```
 
 ## License

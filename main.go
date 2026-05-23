@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,8 +13,8 @@ import (
 )
 
 const (
-	hookMarkerStart = "# ttab hook - start"
-	hookMarkerEnd   = "# ttab hook - end"
+	hookMarkerStart = "# ttag hook - start"
+	hookMarkerEnd   = "# ttag hook - end"
 	version         = "1.0.3"
 )
 
@@ -25,6 +27,10 @@ type DirConfig struct {
 // ─── Entrypoint ──────────────────────────────────────────────────────────────
 
 func main() {
+	if len(os.Args) < 2 || os.Args[1] != "hook" {
+		fmt.Printf("ttag v%s\n", version)
+	}
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(0)
@@ -33,6 +39,8 @@ func main() {
 	switch os.Args[1] {
 	case "install":
 		cmdInstall(os.Args[2:])
+	case "uninstall":
+		cmdUninstall(os.Args[2:])
 	case "set":
 		cmdSet(os.Args[2:])
 	case "clear":
@@ -41,8 +49,10 @@ func main() {
 		cmdList()
 	case "hook":
 		cmdHook(os.Args[2:])
+	case "upgrade":
+		cmdUpgrade()
 	case "version", "--version", "-v":
-		fmt.Printf("ttab %s\n", version)
+		// Version is printed in banner above
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -53,24 +63,26 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`ttab - Terminal Tagger
+	fmt.Println(`ttag - Terminal Tagger
 
 Dynamically color your terminal tabs based on your current directory.
 
 Usage:
-  ttab install [--profile PATH]  Install shell hook into your profile
-  ttab set [--color "#HEX"]      Tag a directory with a tab color
+  ttag install [--profile PATH]  Install shell hook into your profile
+  ttag uninstall                 Remove shell hook from your profile
+  ttag set [--color "#HEX"]      Tag a directory with a tab color
            [--title "Name"]      Optional title prefix
-  ttab clear [path]              Remove tagging for the current or specified directory
-  ttab list                      List all tagged directories
-  ttab hook [path]               (Used by shell hook) Apply colors for a path
-  ttab version                   Print version
+  ttag clear [path]              Remove tagging for the current or specified directory
+  ttag list                      List all tagged directories
+  ttag upgrade                   Upgrade ttag to the latest version
+  ttag hook [path]               (Used by shell hook) Apply colors for a path
+  ttag version                   Print version
 
 Examples:
-  ttab set --color "#ff6b6b" --title "API"
-  ttab set --title "Just Title"
-  ttab clear
-  ttab clear ~/projects/api`)
+  ttag set --color "#ff6b6b" --title "API"
+  ttag set --title "Just Title"
+  ttag clear
+  ttag clear ~/projects/api`)
 }
 
 // ─── Config File ─────────────────────────────────────────────────────────────
@@ -81,7 +93,7 @@ func configPath() string {
 		fmt.Fprintf(os.Stderr, "Error: cannot determine config directory: %v\n", err)
 		os.Exit(1)
 	}
-	return filepath.Join(configDir, "ttab", "config.json")
+	return filepath.Join(configDir, "ttag", "config.json")
 }
 
 func loadConfig() (map[string]DirConfig, error) {
@@ -141,7 +153,7 @@ func cmdSet(args []string) {
 	}
 
 	if color == "" && title == "" {
-		fmt.Fprintln(os.Stderr, "Error: either --color or --title must be provided.\nUsage: ttab set [--color \"#HEX\"] [--title \"Name\"]")
+		fmt.Fprintln(os.Stderr, "Error: either --color or --title must be provided.\nUsage: ttag set [--color \"#HEX\"] [--title \"Name\"]")
 		os.Exit(1)
 	}
 
@@ -529,6 +541,63 @@ func cmdInstall(args []string) {
 	fmt.Println("  Restart your terminal or source your profile to activate.")
 }
 
+func cmdUninstall(args []string) {
+	shell := detectShell()
+
+	// Allow uninstall scripts to pass the exact profile path
+	var profileOverride string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--profile" && i+1 < len(args) {
+			profileOverride = args[i+1]
+			break
+		}
+	}
+
+	profilePath := profileOverride
+	if profilePath == "" {
+		profilePath = defaultProfilePath(shell)
+	}
+
+	existing, err := os.ReadFile(profilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("No shell profile found. Nothing to uninstall.")
+			return
+		}
+		fmt.Fprintf(os.Stderr, "Error reading profile: %v\n", err)
+		os.Exit(1)
+	}
+
+	content := string(existing)
+	if !strings.Contains(content, hookMarkerStart) {
+		fmt.Println("No ttag hook found in profile. Nothing to uninstall.")
+		return
+	}
+
+	start := strings.Index(content, hookMarkerStart)
+	end := strings.Index(content, hookMarkerEnd) + len(hookMarkerEnd)
+
+	// Try to include the preceding newline if one exists so we don't leave blank lines
+	if start > 0 && content[start-1] == '\n' {
+		start--
+		if start > 0 && content[start-1] == '\r' {
+			start--
+		}
+	}
+
+	content = content[:start] + content[end:]
+
+	if err := os.WriteFile(profilePath, []byte(content), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot write profile: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Shell hook removed successfully from", profilePath)
+	fmt.Println("To completely remove ttag:")
+	fmt.Println("  1. Remove the ~/.terminal_tagger directory")
+	fmt.Println("  2. Remove ~/.terminal_tagger/bin from your PATH")
+}
+
 func detectShell() string {
 	if runtime.GOOS == "windows" {
 		return "powershell"
@@ -558,41 +627,154 @@ func hookSnippet(shell string) string {
 	switch shell {
 	case "powershell":
 		return hookMarkerStart + "\n" +
-			"$__ttab_orig_prompt = $function:prompt\n" +
+			"$__ttag_orig_prompt = $function:prompt\n" +
 			"function global:prompt {\n" +
 			"    $origExit = $LASTEXITCODE\n" +
 			"    $currentPwd = $executionContext.SessionState.Path.CurrentLocation.Path\n" +
-			"    if ($global:__ttab_last_pwd -ne $currentPwd) {\n" +
-			"        $__ttab_o = & ttab hook \"$currentPwd\" 2>$null\n" +
-			"        if ($__ttab_o) { [Console]::Write($__ttab_o -join '') }\n" +
-			"        $global:__ttab_last_pwd = $currentPwd\n" +
+			"    if ($global:__ttag_last_pwd -ne $currentPwd) {\n" +
+			"        $__ttag_o = & ttag hook \"$currentPwd\" 2>$null\n" +
+			"        if ($__ttag_o) { [Console]::Write($__ttag_o -join '') }\n" +
+			"        $global:__ttag_last_pwd = $currentPwd\n" +
 			"    }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
-			"    if ($__ttab_orig_prompt) { & $__ttab_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
+			"    if ($__ttag_orig_prompt) { & $__ttag_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
 			"}\n" +
 			hookMarkerEnd
 
 	case "zsh":
 		return hookMarkerStart + "\n" +
-			"__ttab_hook() {\n" +
-			"  if [[ \"$PWD\" != \"$__ttab_last_pwd\" ]]; then\n" +
-			"    ttab hook \"$PWD\"\n" +
-			"    export __ttab_last_pwd=\"$PWD\"\n" +
+			"__ttag_hook() {\n" +
+			"  if [[ \"$PWD\" != \"$__ttag_last_pwd\" ]]; then\n" +
+			"    ttag hook \"$PWD\"\n" +
+			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"  fi\n" +
 			"}\n" +
 			"autoload -Uz add-zsh-hook\n" +
-			"add-zsh-hook precmd __ttab_hook\n" +
+			"add-zsh-hook precmd __ttag_hook\n" +
 			hookMarkerEnd
 
 	default: // bash
 		return hookMarkerStart + "\n" +
-			"__ttab_hook() {\n" +
-			"  if [ \"$PWD\" != \"$__ttab_last_pwd\" ]; then\n" +
-			"    ttab hook \"$PWD\"\n" +
-			"    export __ttab_last_pwd=\"$PWD\"\n" +
+			"__ttag_hook() {\n" +
+			"  if [ \"$PWD\" != \"$__ttag_last_pwd\" ]; then\n" +
+			"    ttag hook \"$PWD\"\n" +
+			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"  fi\n" +
 			"}\n" +
-			"PROMPT_COMMAND=\"__ttab_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
+			"PROMPT_COMMAND=\"__ttag_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
 			hookMarkerEnd
 	}
+}
+
+// ─── upgrade ─────────────────────────────────────────────────────────────────
+
+func cmdUpgrade() {
+	fmt.Println("Checking for upgrades...")
+	
+	resp, err := http.Get("https://api.github.com/repos/dpkay-io/ttag/releases/latest")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Could not reach GitHub API: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error: GitHub API returned status %s\n", resp.Status)
+		os.Exit(1)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to parse GitHub API response: %v\n", err)
+		os.Exit(1)
+	}
+
+	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	if latestVersion == version {
+		fmt.Printf("You are already using the latest version (v%s).\n", version)
+		return
+	}
+
+	fmt.Printf("Upgrade available: v%s -> v%s\n", version, latestVersion)
+
+	osName := runtime.GOOS
+	archName := runtime.GOARCH
+	
+	assetName := fmt.Sprintf("ttag-%s-%s", osName, archName)
+	if osName == "windows" {
+		assetName += ".exe"
+	}
+
+	var downloadURL string
+	for _, asset := range release.Assets {
+		if asset.Name == assetName {
+			downloadURL = asset.BrowserDownloadURL
+			break
+		}
+	}
+
+	if downloadURL == "" {
+		fmt.Fprintf(os.Stderr, "Error: No suitable binary found for your OS/Arch (%s) in the latest release.\n", assetName)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Downloading %s...\n", assetName)
+	
+	dlResp, err := http.Get(downloadURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to download binary: %v\n", err)
+		os.Exit(1)
+	}
+	defer dlResp.Body.Close()
+
+	if dlResp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error: Download failed with status %s\n", dlResp.Status)
+		os.Exit(1)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Could not determine executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	newPath := execPath + ".new"
+	oldPath := execPath + ".old"
+
+	out, err := os.OpenFile(newPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to create temporary file: %v\n", err)
+		os.Exit(1)
+	}
+
+	if _, err := io.Copy(out, dlResp.Body); err != nil {
+		out.Close()
+		fmt.Fprintf(os.Stderr, "Error: Failed to write downloaded data: %v\n", err)
+		os.Exit(1)
+	}
+	out.Close()
+
+	// Swap binaries
+	_ = os.Remove(oldPath) // remove previous old file if exists
+	if err := os.Rename(execPath, oldPath); err != nil {
+		os.Remove(newPath)
+		fmt.Fprintf(os.Stderr, "Error: Failed to rename current executable: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := os.Rename(newPath, execPath); err != nil {
+		// Rollback on failure
+		os.Rename(oldPath, execPath)
+		fmt.Fprintf(os.Stderr, "Error: Failed to replace executable: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Upgrade successful!")
 }

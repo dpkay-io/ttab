@@ -1,15 +1,15 @@
 #!/bin/sh
-# install.sh — Install ttab on macOS / Linux
-# Usage: curl -fsSL https://raw.githubusercontent.com/dpkay-io/ttab/main/install.sh | sh
+# install.sh — Install ttag on macOS / Linux
+# Usage: curl -fsSL https://raw.githubusercontent.com/dpkay-io/ttag/main/install.sh | sh
 
 set -e
 
-REPO="dpkay-io/ttab"
+REPO="dpkay-io/ttag"
 INSTALL_DIR="$HOME/.terminal_tagger/bin"
-BINARY_NAME="ttab"
+BINARY_NAME="ttag"
 
 echo ""
-echo "  ttab installer"
+echo "  ttag installer"
 echo "  ─────────────────────────────"
 echo ""
 
@@ -47,7 +47,7 @@ esac
 echo "  Platform: ${OS}/${ARCH}"
 
 # ── Download binary ───────────────────────────────────────────────────────────
-ASSET_NAME="ttab-${OS}-${ARCH}"
+ASSET_NAME="ttag-${OS}-${ARCH}"
 DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ASSET_NAME"
 TARGET_PATH="$INSTALL_DIR/$BINARY_NAME"
 
@@ -73,7 +73,7 @@ add_to_path() {
     fi
     {
         echo ""
-        echo "# ttab — terminal tagger"
+        echo "# ttag — terminal tagger"
         echo "export PATH=\"\$PATH:$INSTALL_DIR\""
     } >> "$profile_file"
     echo "  Added to PATH in $(basename "$profile_file")"
@@ -86,7 +86,7 @@ case "$SHELL_NAME" in
     *)    add_to_path "$HOME/.profile" ;;
 esac
 
-# Make ttab available in the current session
+# Make ttag available in the current session
 export PATH="$PATH:$INSTALL_DIR"
 
 # ── Install shell hook ───────────────────────────────────────────────────────
@@ -94,6 +94,6 @@ echo "  Installing shell hook..."
 "$TARGET_PATH" install
 
 echo ""
-echo "  ✓ ttab installed successfully!"
+echo "  ✓ ttag installed successfully!"
 echo "  Restart your terminal to activate."
 echo ""

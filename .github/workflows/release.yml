@@ -38,7 +38,7 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then
             EXT=".exe"
           fi
-          OUTPUT="ttab-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}"
+          OUTPUT="ttag-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}"
           go build -ldflags="-s -w" -o "$OUTPUT" .
           echo "ASSET_NAME=$OUTPUT" >> "$GITHUB_ENV"
 
