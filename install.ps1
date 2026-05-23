@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 
 $repo = "dpkay-io/ttab"
-$installDir = Join-Path $HOME ".terminal_tagger" "bin"
+$installDir = Join-Path $HOME ".terminal_tagger\bin"
 $binaryName = "ttab.exe"
 
 Write-Host ""
