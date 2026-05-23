@@ -1,0 +1,17 @@
+# Binary
+ttab
+ttab.exe
+ttab-*
+
+# Config (created at runtime)
+.terminal_tagger.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
