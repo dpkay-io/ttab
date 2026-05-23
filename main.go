@@ -11,15 +11,14 @@ import (
 )
 
 const (
-	configFileName  = ".terminal_tagger.json"
 	hookMarkerStart = "# ttab hook - start"
 	hookMarkerEnd   = "# ttab hook - end"
-	version         = "0.1.0"
+	version         = "1.0.3"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
 type DirConfig struct {
-	Color string `json:"color"`
+	Color string `json:"color,omitempty"`
 	Title string `json:"title,omitempty"`
 }
 
@@ -37,7 +36,9 @@ func main() {
 	case "set":
 		cmdSet(os.Args[2:])
 	case "clear":
-		cmdClear()
+		cmdClear(os.Args[2:])
+	case "list":
+		cmdList()
 	case "hook":
 		cmdHook(os.Args[2:])
 	case "version", "--version", "-v":
@@ -58,39 +59,47 @@ Dynamically color your terminal tabs based on your current directory.
 
 Usage:
   ttab install [--profile PATH]  Install shell hook into your profile
-  ttab set --color "#HEX"        Tag the current directory with a tab color
-       [--title "Name"]          Optional title prefix
-  ttab clear                     Remove tagging for the current directory
+  ttab set [--color "#HEX"]      Tag a directory with a tab color
+           [--title "Name"]      Optional title prefix
+  ttab clear [path]              Remove tagging for the current or specified directory
+  ttab list                      List all tagged directories
   ttab hook [path]               (Used by shell hook) Apply colors for a path
   ttab version                   Print version
 
 Examples:
   ttab set --color "#ff6b6b" --title "API"
-  ttab set --color "#4ecdc4"
-  ttab clear`)
+  ttab set --title "Just Title"
+  ttab clear
+  ttab clear ~/projects/api`)
 }
 
 // ─── Config File ─────────────────────────────────────────────────────────────
 
 func configPath() string {
-	home, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot determine home directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: cannot determine config directory: %v\n", err)
 		os.Exit(1)
 	}
-	return filepath.Join(home, configFileName)
+	return filepath.Join(configDir, "ttab", "config.json")
 }
 
-func loadConfig() map[string]DirConfig {
+func loadConfig() (map[string]DirConfig, error) {
 	data, err := os.ReadFile(configPath())
 	if err != nil {
-		return make(map[string]DirConfig)
+		if os.IsNotExist(err) {
+			return make(map[string]DirConfig), nil
+		}
+		return nil, err
 	}
 	var cfg map[string]DirConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return make(map[string]DirConfig)
+		return nil, fmt.Errorf("invalid JSON in config file: %w", err)
 	}
-	return cfg
+	if cfg == nil {
+		cfg = make(map[string]DirConfig)
+	}
+	return cfg, nil
 }
 
 func saveConfig(cfg map[string]DirConfig) {
@@ -99,7 +108,14 @@ func saveConfig(cfg map[string]DirConfig) {
 		fmt.Fprintf(os.Stderr, "Error: cannot marshal config: %v\n", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(configPath(), data, 0644); err != nil {
+	
+	cPath := configPath()
+	if err := os.MkdirAll(filepath.Dir(cPath), 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: cannot create config directory: %v\n", err)
+		os.Exit(1)
+	}
+	
+	if err := os.WriteFile(cPath, data, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: cannot write config: %v\n", err)
 		os.Exit(1)
 	}
@@ -124,22 +140,24 @@ func cmdSet(args []string) {
 		}
 	}
 
-	if color == "" {
-		fmt.Fprintln(os.Stderr, "Error: --color is required.\nUsage: ttab set --color \"#HEX\" [--title \"Name\"]")
+	if color == "" && title == "" {
+		fmt.Fprintln(os.Stderr, "Error: either --color or --title must be provided.\nUsage: ttab set [--color \"#HEX\"] [--title \"Name\"]")
 		os.Exit(1)
 	}
 
-	// Validate hex color
-	color = strings.TrimPrefix(color, "#")
-	if len(color) != 6 {
-		fmt.Fprintln(os.Stderr, "Error: color must be a 6-digit hex value (e.g., #ff6b6b)")
-		os.Exit(1)
+	if color != "" {
+		// Validate hex color
+		color = strings.TrimPrefix(color, "#")
+		if len(color) != 6 {
+			fmt.Fprintln(os.Stderr, "Error: color must be a 6-digit hex value (e.g., #ff6b6b)")
+			os.Exit(1)
+		}
+		if _, err := strconv.ParseUint(color, 16, 32); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: invalid hex color: #%s\n", color)
+			os.Exit(1)
+		}
+		color = "#" + strings.ToLower(color)
 	}
-	if _, err := strconv.ParseUint(color, 16, 32); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: invalid hex color: #%s\n", color)
-		os.Exit(1)
-	}
-	color = "#" + strings.ToLower(color)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -148,38 +166,102 @@ func cmdSet(args []string) {
 	}
 	cwd = normalizePath(cwd)
 
-	cfg := loadConfig()
-	cfg[cwd] = DirConfig{Color: color, Title: title}
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+	
+	dc := cfg[cwd]
+	if color != "" {
+		dc.Color = color
+	}
+	if title != "" {
+		dc.Title = title
+	}
+	cfg[cwd] = dc
+	
 	saveConfig(cfg)
 
-	titleDisplay := title
+	titleDisplay := dc.Title
 	if titleDisplay == "" {
 		titleDisplay = "(auto)"
 	}
-	fmt.Printf("Tagged %s  color: %s, title: %s\n", cwd, color, titleDisplay)
+	colorDisplay := dc.Color
+	if colorDisplay == "" {
+		colorDisplay = "(inherited or default)"
+	}
+	fmt.Printf("Tagged %s  color: %s, title: %s\n", cwd, colorDisplay, titleDisplay)
 }
 
 // ─── clear ───────────────────────────────────────────────────────────────────
 
-func cmdClear() {
-	cwd, err := os.Getwd()
+func cmdClear(args []string) {
+	var targetPath string
+	if len(args) > 0 {
+		targetPath = args[0]
+		// Convert relative to absolute
+		if abs, err := filepath.Abs(targetPath); err == nil {
+			targetPath = abs
+		}
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: cannot get working directory: %v\n", err)
+			os.Exit(1)
+		}
+		targetPath = cwd
+	}
+	targetPath = normalizePath(targetPath)
+
+	cfg, err := loadConfig()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: cannot get working directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
-	cwd = normalizePath(cwd)
-
-	cfg := loadConfig()
-	if _, ok := cfg[cwd]; !ok {
+	
+	if _, ok := cfg[targetPath]; !ok {
 		fmt.Println("No tagging found for this directory.")
 		return
 	}
-	delete(cfg, cwd)
+	delete(cfg, targetPath)
 	saveConfig(cfg)
 
-	// Emit reset to restore default tab appearance
-	fmt.Print(resetSequences())
-	fmt.Printf("Cleared tagging for %s\n", cwd)
+	// Emit reset to restore default tab appearance if we cleared the current directory
+	cwd, _ := os.Getwd()
+	if normalizePath(cwd) == targetPath {
+		fmt.Print(resetSequences())
+	}
+	
+	fmt.Printf("Cleared tagging for %s\n", targetPath)
+}
+
+// ─── list ────────────────────────────────────────────────────────────────────
+
+func cmdList() {
+	cfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(cfg) == 0 {
+		fmt.Println("No directories are currently tagged.")
+		return
+	}
+
+	fmt.Println("Tagged directories:")
+	for p, dc := range cfg {
+		color := dc.Color
+		if color == "" {
+			color = "none"
+		}
+		title := dc.Title
+		if title == "" {
+			title = "(auto)"
+		}
+		fmt.Printf("  %s\n    color: %s, title: %s\n", p, color, title)
+	}
 }
 
 // ─── hook ────────────────────────────────────────────────────────────────────
@@ -197,7 +279,12 @@ func cmdHook(args []string) {
 	}
 	pwd = normalizePath(pwd)
 
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		// Fail silently during hook to avoid breaking the prompt
+		return
+	}
+	
 	matched, dc := matchPath(cfg, pwd)
 
 	if !matched {
@@ -206,14 +293,20 @@ func cmdHook(args []string) {
 		return
 	}
 
-	// Build title: "Prefix · LeafFolder" or just "LeafFolder"
+	// Build title: "Prefix | LeafFolder" or just "LeafFolder"
 	title := filepath.Base(pwd)
 	if dc.Title != "" {
 		if title != dc.Title {
-			title = dc.Title + " \u00b7 " + title
+			title = dc.Title + " | " + title
 		} else {
 			title = dc.Title
 		}
+	}
+
+	if dc.Color == "" {
+		// Just set the title if color is empty
+		fmt.Printf("\033]0;%s\a", title)
+		return
 	}
 
 	// Parse background color and compute contrast foreground
@@ -344,27 +437,37 @@ func findConfig(cfg map[string]DirConfig, p string) (DirConfig, bool) {
 }
 
 // matchPath checks if pwd (or any of its parent directories) is tagged.
-// Returns the closest matching config entry.
+// It merges properties, so a child can override the title but inherit the color from a parent.
 func matchPath(cfg map[string]DirConfig, pwd string) (bool, DirConfig) {
-	// Exact match first
-	if dc, ok := findConfig(cfg, pwd); ok {
-		return true, dc
-	}
-
-	// Walk upward through parent directories
 	current := pwd
+	var finalTitle string
+	var finalColor string
+	matched := false
+
 	for {
+		if dc, ok := findConfig(cfg, current); ok {
+			matched = true
+			if finalTitle == "" && dc.Title != "" {
+				finalTitle = dc.Title
+			}
+			if finalColor == "" && dc.Color != "" {
+				finalColor = dc.Color
+			}
+			if finalTitle != "" && finalColor != "" {
+				break
+			}
+		}
 		parent := filepath.Dir(current)
 		if parent == current {
 			break // reached filesystem root
 		}
-		if dc, ok := findConfig(cfg, parent); ok {
-			return true, dc
-		}
 		current = parent
 	}
 
-	return false, DirConfig{}
+	if !matched {
+		return false, DirConfig{}
+	}
+	return true, DirConfig{Color: finalColor, Title: finalTitle}
 }
 
 // ─── install ─────────────────────────────────────────────────────────────────
@@ -458,8 +561,12 @@ func hookSnippet(shell string) string {
 			"$__ttab_orig_prompt = $function:prompt\n" +
 			"function global:prompt {\n" +
 			"    $origExit = $LASTEXITCODE\n" +
-			"    $__ttab_o = & ttab hook \"$($executionContext.SessionState.Path.CurrentLocation)\" 2>$null\n" +
-			"    if ($__ttab_o) { [Console]::Write($__ttab_o -join '') }\n" +
+			"    $currentPwd = $executionContext.SessionState.Path.CurrentLocation.Path\n" +
+			"    if ($global:__ttab_last_pwd -ne $currentPwd) {\n" +
+			"        $__ttab_o = & ttab hook \"$currentPwd\" 2>$null\n" +
+			"        if ($__ttab_o) { [Console]::Write($__ttab_o -join '') }\n" +
+			"        $global:__ttab_last_pwd = $currentPwd\n" +
+			"    }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
 			"    if ($__ttab_orig_prompt) { & $__ttab_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
 			"}\n" +
@@ -467,14 +574,24 @@ func hookSnippet(shell string) string {
 
 	case "zsh":
 		return hookMarkerStart + "\n" +
-			"__ttab_hook() { ttab hook \"$PWD\" }\n" +
+			"__ttab_hook() {\n" +
+			"  if [[ \"$PWD\" != \"$__ttab_last_pwd\" ]]; then\n" +
+			"    ttab hook \"$PWD\"\n" +
+			"    export __ttab_last_pwd=\"$PWD\"\n" +
+			"  fi\n" +
+			"}\n" +
 			"autoload -Uz add-zsh-hook\n" +
 			"add-zsh-hook precmd __ttab_hook\n" +
 			hookMarkerEnd
 
 	default: // bash
 		return hookMarkerStart + "\n" +
-			"__ttab_hook() { ttab hook \"$PWD\"; }\n" +
+			"__ttab_hook() {\n" +
+			"  if [ \"$PWD\" != \"$__ttab_last_pwd\" ]; then\n" +
+			"    ttab hook \"$PWD\"\n" +
+			"    export __ttab_last_pwd=\"$PWD\"\n" +
+			"  fi\n" +
+			"}\n" +
 			"PROMPT_COMMAND=\"__ttab_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
 			hookMarkerEnd
 	}

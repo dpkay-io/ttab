@@ -38,6 +38,11 @@ ttab set --color "#ff6b6b" --title "API"
 ```
 
 The `--title` flag is optional. If omitted, the folder name is used automatically.
+If the directory is already tagged or if it inherits a color from a parent directory, the `--color` flag is also optional. You can just set a new title:
+
+```bash
+ttab set --title "Just Title"
+```
 
 ### Clear a tag
 
@@ -45,6 +50,20 @@ Remove the color tag from the current directory:
 
 ```bash
 ttab clear
+```
+
+You can also clear a specific directory without navigating to it:
+
+```bash
+ttab clear ~/projects/api
+```
+
+### List tags
+
+View all currently tagged directories:
+
+```bash
+ttab list
 ```
 
 ### How it works
@@ -76,7 +95,7 @@ ttab hook /path/to/directory
 
 ## Configuration
 
-Tags are stored in `~/.terminal_tagger.json`:
+Tags are stored in `~/.config/ttab/config.json` (Linux/macOS) or `%APPDATA%\ttab\config.json` (Windows):
 
 ```json
 {
@@ -91,7 +110,7 @@ Tags are stored in `~/.terminal_tagger.json`:
 }
 ```
 
-You can edit this file directly if you prefer.
+You can edit this file directly if you prefer, or use the `ttab list` command to view it.
 
 ## Shell Support
 
