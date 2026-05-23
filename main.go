@@ -10,12 +10,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.5"
+	version         = "1.0.6"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
@@ -194,6 +195,7 @@ func cmdSet(args []string) {
 	cfg[cwd] = dc
 	
 	saveConfig(cfg)
+	touchUpdateFile()
 
 	titleDisplay := dc.Title
 	if titleDisplay == "" {
@@ -239,6 +241,7 @@ func cmdClear(args []string) {
 	}
 	delete(cfg, targetPath)
 	saveConfig(cfg)
+	touchUpdateFile()
 
 	cmdHook(nil)
 	
@@ -628,10 +631,14 @@ func hookSnippet(shell string) string {
 			"function global:prompt {\n" +
 			"    $origExit = $LASTEXITCODE\n" +
 			"    $currentPwd = $executionContext.SessionState.Path.CurrentLocation.Path\n" +
-			"    if ($global:__ttag_last_pwd -ne $currentPwd) {\n" +
+			"    $updateFile = \"$HOME\\.ttag_update\"\n" +
+			"    $updateTime = $null\n" +
+			"    if (Test-Path $updateFile) { $updateTime = (Get-Item $updateFile).LastWriteTime }\n" +
+			"    if ($global:__ttag_last_pwd -ne $currentPwd -or $global:__ttag_last_update -ne $updateTime) {\n" +
 			"        $__ttag_o = & ttag hook \"$currentPwd\" 2>$null\n" +
 			"        if ($__ttag_o) { [Console]::Write($__ttag_o -join '') }\n" +
 			"        $global:__ttag_last_pwd = $currentPwd\n" +
+			"        $global:__ttag_last_update = $updateTime\n" +
 			"    }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
 			"    if ($__ttag_orig_prompt) { & $__ttag_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
@@ -641,9 +648,19 @@ func hookSnippet(shell string) string {
 	case "zsh":
 		return hookMarkerStart + "\n" +
 			"__ttag_hook() {\n" +
-			"  if [[ \"$PWD\" != \"$__ttag_last_pwd\" ]]; then\n" +
+			"  local update_file=\"$HOME/.ttag_update\"\n" +
+			"  local update_time=\"\"\n" +
+			"  if [ -f \"$update_file\" ]; then\n" +
+			"    if [[ \"$OSTYPE\" == \"darwin\"* ]]; then\n" +
+			"      update_time=$(stat -f %m \"$update_file\" 2>/dev/null)\n" +
+			"    else\n" +
+			"      update_time=$(stat -c %Y \"$update_file\" 2>/dev/null)\n" +
+			"    fi\n" +
+			"  fi\n" +
+			"  if [[ \"$PWD\" != \"$__ttag_last_pwd\" ]] || [[ \"$update_time\" != \"$__ttag_last_update\" ]]; then\n" +
 			"    ttag hook \"$PWD\"\n" +
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
+			"    export __ttag_last_update=\"$update_time\"\n" +
 			"  fi\n" +
 			"}\n" +
 			"autoload -Uz add-zsh-hook\n" +
@@ -653,13 +670,35 @@ func hookSnippet(shell string) string {
 	default: // bash
 		return hookMarkerStart + "\n" +
 			"__ttag_hook() {\n" +
-			"  if [ \"$PWD\" != \"$__ttag_last_pwd\" ]; then\n" +
+			"  local update_file=\"$HOME/.ttag_update\"\n" +
+			"  local update_time=\"\"\n" +
+			"  if [ -f \"$update_file\" ]; then\n" +
+			"    if [ \"$(uname)\" = \"Darwin\" ]; then\n" +
+			"      update_time=$(stat -f %m \"$update_file\" 2>/dev/null)\n" +
+			"    else\n" +
+			"      update_time=$(stat -c %Y \"$update_file\" 2>/dev/null)\n" +
+			"    fi\n" +
+			"  fi\n" +
+			"  if [ \"$PWD\" != \"$__ttag_last_pwd\" ] || [ \"$update_time\" != \"$__ttag_last_update\" ]; then\n" +
 			"    ttag hook \"$PWD\"\n" +
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
+			"    export __ttag_last_update=\"$update_time\"\n" +
 			"  fi\n" +
 			"}\n" +
 			"PROMPT_COMMAND=\"__ttag_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
 			hookMarkerEnd
+	}
+}
+
+// ─── Touch Update File ────────────────────────────────────────────────────────
+
+func touchUpdateFile() {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		path := filepath.Join(home, ".ttag_update")
+		os.WriteFile(path, []byte("1"), 0644)
+		now := time.Now()
+		os.Chtimes(path, now, now)
 	}
 }
 
