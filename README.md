@@ -1,5 +1,7 @@
 # ttag — Terminal Tab Tagger
 
+![Demo](cli.png)
+
 Dynamically color your terminal tabs and set titles based on your current directory. Zero-latency, zero-dependency, cross-platform.
 
 `ttag` injects a lightweight hook into your shell prompt. When you `cd` into a tagged directory, it instantly recolors the tab and updates the title — so you always know where you are at a glance.
