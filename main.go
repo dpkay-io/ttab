@@ -15,7 +15,7 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.4"
+	version         = "1.0.5"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
@@ -204,6 +204,7 @@ func cmdSet(args []string) {
 		colorDisplay = "(inherited or default)"
 	}
 	fmt.Printf("Tagged %s  color: %s, title: %s\n", cwd, colorDisplay, titleDisplay)
+	cmdHook(nil)
 }
 
 // ─── clear ───────────────────────────────────────────────────────────────────
@@ -239,11 +240,7 @@ func cmdClear(args []string) {
 	delete(cfg, targetPath)
 	saveConfig(cfg)
 
-	// Emit reset to restore default tab appearance if we cleared the current directory
-	cwd, _ := os.Getwd()
-	if normalizePath(cwd) == targetPath {
-		fmt.Print(resetSequences())
-	}
+	cmdHook(nil)
 	
 	fmt.Printf("Cleared tagging for %s\n", targetPath)
 }
