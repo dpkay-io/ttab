@@ -15,7 +15,7 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.3"
+	version         = "1.0.4"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
