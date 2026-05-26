@@ -121,14 +121,38 @@ func TestHookSnippet(t *testing.T) {
 	if !strings.Contains(ps, "global:prompt") {
 		t.Errorf("Expected PowerShell hook")
 	}
+	if !strings.Contains(ps, "?1004h") {
+		t.Errorf("Expected focus reporting enable in PowerShell hook")
+	}
+	if !strings.Contains(ps, "__ttag_focused") {
+		t.Errorf("Expected focus tracking in PowerShell hook")
+	}
 
 	zsh := hookSnippet("zsh")
 	if !strings.Contains(zsh, "add-zsh-hook") {
 		t.Errorf("Expected Zsh hook")
 	}
+	if !strings.Contains(zsh, "?1004h") {
+		t.Errorf("Expected focus reporting enable in Zsh hook")
+	}
+	if !strings.Contains(zsh, "__ttag_focus_in") {
+		t.Errorf("Expected focus handlers in Zsh hook")
+	}
+	if !strings.Contains(zsh, "zshexit") {
+		t.Errorf("Expected exit cleanup in Zsh hook")
+	}
 
 	bash := hookSnippet("bash")
 	if !strings.Contains(bash, "PROMPT_COMMAND") {
 		t.Errorf("Expected Bash hook")
+	}
+	if !strings.Contains(bash, "?1004h") {
+		t.Errorf("Expected focus reporting enable in Bash hook")
+	}
+	if !strings.Contains(bash, "__ttag_focus_in") {
+		t.Errorf("Expected focus handlers in Bash hook")
+	}
+	if !strings.Contains(bash, "__ttag_cleanup") {
+		t.Errorf("Expected exit cleanup in Bash hook")
 	}
 }

@@ -16,7 +16,8 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.8"
+	version         = "1.0.9"
+	focusIndicator  = "●"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
@@ -660,9 +661,27 @@ func hookSnippet(shell string) string {
 	switch shell {
 	case "powershell":
 		return hookMarkerStart + "\n" +
+			"$global:__ttag_focused = $true\n" +
+			"[Console]::Write(\"$([char]27)[?1004h\")\n" +
+			"if (Get-Module PSReadLine) {\n" +
+			"    Set-PSReadLineKeyHandler -Chord \"$([char]27)[I\" -ScriptBlock {\n" +
+			"        $global:__ttag_focused = $true\n" +
+			"        if ($global:__ttag_title_prefix) {\n" +
+			"            $Host.UI.RawUI.WindowTitle = \"$([char]0x25CF) $($global:__ttag_title_prefix)\"\n" +
+			"        }\n" +
+			"    }\n" +
+			"    Set-PSReadLineKeyHandler -Chord \"$([char]27)[O\" -ScriptBlock {\n" +
+			"        $global:__ttag_focused = $false\n" +
+			"        if ($global:__ttag_title_prefix) {\n" +
+			"            $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix\n" +
+			"        }\n" +
+			"    }\n" +
+			"}\n" +
+			"Register-EngineEvent PowerShell.Exiting -Action { [Console]::Write(\"$([char]27)[?1004l\") } | Out-Null\n" +
 			"$__ttag_orig_prompt = $function:prompt\n" +
 			"function global:prompt {\n" +
 			"    $origExit = $LASTEXITCODE\n" +
+			"    [Console]::Write(\"$([char]27)[?1004h\")\n" +
 			"    $currentPwd = $executionContext.SessionState.Path.CurrentLocation.Path\n" +
 			"    $updateFile = \"$HOME\\.ttag_update\"\n" +
 			"    $updateTime = $null\n" +
@@ -674,7 +693,13 @@ func hookSnippet(shell string) string {
 			"        $global:__ttag_last_pwd = $currentPwd\n" +
 			"        $global:__ttag_last_update = $updateTime\n" +
 			"    }\n" +
-			"    if ($global:__ttag_title_prefix) { $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix }\n" +
+			"    if ($global:__ttag_title_prefix) {\n" +
+			"        if ($global:__ttag_focused) {\n" +
+			"            $Host.UI.RawUI.WindowTitle = \"$([char]0x25CF) $($global:__ttag_title_prefix)\"\n" +
+			"        } else {\n" +
+			"            $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix\n" +
+			"        }\n" +
+			"    }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
 			"    if ($__ttag_orig_prompt) { & $__ttag_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
 			"}\n" +
@@ -682,6 +707,14 @@ func hookSnippet(shell string) string {
 
 	case "zsh":
 		return hookMarkerStart + "\n" +
+			"__ttag_focused=1\n" +
+			"printf '\\033[?1004h'\n" +
+			"__ttag_focus_in() { __ttag_focused=1; if [[ -n \"$__ttag_title_prefix\" ]]; then printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"; fi; }\n" +
+			"__ttag_focus_out() { __ttag_focused=0; if [[ -n \"$__ttag_title_prefix\" ]]; then printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"; fi; }\n" +
+			"zle -N __ttag_focus_in\n" +
+			"zle -N __ttag_focus_out\n" +
+			"bindkey '\\e[I' __ttag_focus_in\n" +
+			"bindkey '\\e[O' __ttag_focus_out\n" +
 			"__ttag_hook() {\n" +
 			"  local update_file=\"$HOME/.ttag_update\"\n" +
 			"  local update_time=\"\"\n" +
@@ -698,16 +731,29 @@ func hookSnippet(shell string) string {
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"    export __ttag_last_update=\"$update_time\"\n" +
 			"  fi\n" +
+			"  printf '\\033[?1004h'\n" +
 			"  if [[ -n \"$__ttag_title_prefix\" ]]; then\n" +
-			"    printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
+			"    if [[ \"$__ttag_focused\" == \"1\" ]]; then\n" +
+			"      printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"\n" +
+			"    else\n" +
+			"      printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
+			"    fi\n" +
 			"  fi\n" +
 			"}\n" +
+			"__ttag_cleanup() { printf '\\033[?1004l'; }\n" +
 			"autoload -Uz add-zsh-hook\n" +
 			"add-zsh-hook precmd __ttag_hook\n" +
+			"add-zsh-hook zshexit __ttag_cleanup\n" +
 			hookMarkerEnd
 
 	default: // bash
 		return hookMarkerStart + "\n" +
+			"__ttag_focused=1\n" +
+			"printf '\\033[?1004h'\n" +
+			"__ttag_focus_in() { __ttag_focused=1; if [ -n \"$__ttag_title_prefix\" ]; then printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"; fi; }\n" +
+			"__ttag_focus_out() { __ttag_focused=0; if [ -n \"$__ttag_title_prefix\" ]; then printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"; fi; }\n" +
+			"bind -x '\"\\e[I\": __ttag_focus_in'\n" +
+			"bind -x '\"\\e[O\": __ttag_focus_out'\n" +
 			"__ttag_hook() {\n" +
 			"  local update_file=\"$HOME/.ttag_update\"\n" +
 			"  local update_time=\"\"\n" +
@@ -724,10 +770,17 @@ func hookSnippet(shell string) string {
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"    export __ttag_last_update=\"$update_time\"\n" +
 			"  fi\n" +
+			"  printf '\\033[?1004h'\n" +
 			"  if [ -n \"$__ttag_title_prefix\" ]; then\n" +
-			"    printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
+			"    if [ \"$__ttag_focused\" = \"1\" ]; then\n" +
+			"      printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"\n" +
+			"    else\n" +
+			"      printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
+			"    fi\n" +
 			"  fi\n" +
 			"}\n" +
+			"__ttag_cleanup() { printf '\\033[?1004l'; }\n" +
+			"trap '__ttag_cleanup' EXIT\n" +
 			"PROMPT_COMMAND=\"__ttag_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
 			hookMarkerEnd
 	}
