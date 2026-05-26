@@ -16,7 +16,7 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.9"
+	version         = "1.1.0"
 	focusIndicator  = "●"
 )
 
@@ -31,6 +31,11 @@ type DirConfig struct {
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "hook" {
 		fmt.Printf("ttag v%s\n", version)
+		shell := detectShell()
+		hookVer := installedHookVersion(shell, "")
+		if hookVer != "" && hookVer != version {
+			fmt.Fprintf(os.Stderr, "Warning: shell hook is v%s but binary is v%s. Run 'ttag install' to update.\n", hookVer, version)
+		}
 	}
 
 	if len(os.Args) < 2 {
@@ -656,11 +661,41 @@ func defaultProfilePath(shell string) string {
 	}
 }
 
+// hookVersionPrefix returns the version comment line embedded in the hook.
+func hookVersionPrefix() string {
+	return "# ttag hook v" + version
+}
+
+// installedHookVersion reads the shell profile and extracts the embedded hook version.
+// Returns empty string if no hook is installed or version line is missing.
+func installedHookVersion(shell, profilePath string) string {
+	if profilePath == "" {
+		profilePath = defaultProfilePath(shell)
+	}
+	data, err := os.ReadFile(profilePath)
+	if err != nil {
+		return ""
+	}
+	content := string(data)
+	start := strings.Index(content, hookMarkerStart)
+	if start < 0 {
+		return ""
+	}
+	// Look for version line right after the start marker
+	after := content[start+len(hookMarkerStart):]
+	lines := strings.SplitN(after, "\n", 3)
+	if len(lines) >= 2 && strings.HasPrefix(lines[1], "# ttag hook v") {
+		return strings.TrimPrefix(lines[1], "# ttag hook v")
+	}
+	return ""
+}
+
 // hookSnippet returns the shell-specific code block injected into the profile.
 func hookSnippet(shell string) string {
+	versionLine := hookVersionPrefix() + "\n"
 	switch shell {
 	case "powershell":
-		return hookMarkerStart + "\n" +
+		return hookMarkerStart + "\n" + versionLine +
 			"$global:__ttag_focused = $true\n" +
 			"[Console]::Write(\"$([char]27)[?1004h\")\n" +
 			"if (Get-Module PSReadLine) {\n" +
@@ -706,7 +741,7 @@ func hookSnippet(shell string) string {
 			hookMarkerEnd
 
 	case "zsh":
-		return hookMarkerStart + "\n" +
+		return hookMarkerStart + "\n" + versionLine +
 			"__ttag_focused=1\n" +
 			"printf '\\033[?1004h'\n" +
 			"__ttag_focus_in() { __ttag_focused=1; if [[ -n \"$__ttag_title_prefix\" ]]; then printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"; fi; }\n" +
@@ -747,7 +782,7 @@ func hookSnippet(shell string) string {
 			hookMarkerEnd
 
 	default: // bash
-		return hookMarkerStart + "\n" +
+		return hookMarkerStart + "\n" + versionLine +
 			"__ttag_focused=1\n" +
 			"printf '\\033[?1004h'\n" +
 			"__ttag_focus_in() { __ttag_focused=1; if [ -n \"$__ttag_title_prefix\" ]; then printf '\\033]0;" + focusIndicator + " %s\\a' \"$__ttag_title_prefix\"; fi; }\n" +

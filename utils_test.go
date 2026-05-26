@@ -116,6 +116,40 @@ func TestDefaultProfilePath(t *testing.T) {
 	}
 }
 
+func TestHookSnippetVersion(t *testing.T) {
+	for _, shell := range []string{"powershell", "zsh", "bash"} {
+		snippet := hookSnippet(shell)
+		expected := "# ttag hook v" + version
+		if !strings.Contains(snippet, expected) {
+			t.Errorf("%s hook missing version line %q", shell, expected)
+		}
+	}
+}
+
+func TestInstalledHookVersion(t *testing.T) {
+	dir := t.TempDir()
+	profile := filepath.Join(dir, "profile")
+
+	// No file → empty
+	if v := installedHookVersion("bash", profile); v != "" {
+		t.Errorf("Expected empty version for missing profile, got %q", v)
+	}
+
+	// Write hook with version
+	snippet := hookSnippet("bash")
+	os.WriteFile(profile, []byte("# stuff\n"+snippet+"\n"), 0644)
+	if v := installedHookVersion("bash", profile); v != version {
+		t.Errorf("Expected %q, got %q", version, v)
+	}
+
+	// Write hook without version line (simulating old install)
+	old := hookMarkerStart + "\nsome old content\n" + hookMarkerEnd
+	os.WriteFile(profile, []byte(old), 0644)
+	if v := installedHookVersion("bash", profile); v != "" {
+		t.Errorf("Expected empty version for old hook, got %q", v)
+	}
+}
+
 func TestHookSnippet(t *testing.T) {
 	ps := hookSnippet("powershell")
 	if !strings.Contains(ps, "global:prompt") {
