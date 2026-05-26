@@ -16,7 +16,7 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.0.7"
+	version         = "1.0.8"
 )
 
 // DirConfig stores the appearance settings for a tagged directory.
@@ -314,8 +314,13 @@ func cmdHook(args []string) {
 	matched, dc := matchPath(cfg, pwd)
 
 	if !matched {
-		if !titleOnly {
-			// User left a tagged directory — reset tab appearance
+		if titleOnly {
+			fmt.Print(filepath.Base(pwd))
+		} else if !noTitle {
+			// Manual call without --no-title: reset color and title
+			fmt.Printf("%s\033]0;%s\a", resetSequences(), filepath.Base(pwd))
+		} else {
+			// Hook call with --no-title: just reset color (hook handles title)
 			fmt.Print(resetSequences())
 		}
 		return
