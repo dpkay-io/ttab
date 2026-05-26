@@ -280,9 +280,23 @@ func cmdList() {
 
 func cmdHook(args []string) {
 	var pwd string
-	if len(args) > 0 {
-		pwd = args[0]
-	} else {
+	noTitle := false
+	titleOnly := false
+
+	for _, arg := range args {
+		switch arg {
+		case "--no-title":
+			noTitle = true
+		case "--title-only":
+			titleOnly = true
+		default:
+			if pwd == "" {
+				pwd = arg
+			}
+		}
+	}
+
+	if pwd == "" {
 		var err error
 		pwd, err = os.Getwd()
 		if err != nil {
@@ -296,12 +310,14 @@ func cmdHook(args []string) {
 		// Fail silently during hook to avoid breaking the prompt
 		return
 	}
-	
+
 	matched, dc := matchPath(cfg, pwd)
 
 	if !matched {
-		// User left a tagged directory — reset tab appearance
-		fmt.Print(resetSequences())
+		if !titleOnly {
+			// User left a tagged directory — reset tab appearance
+			fmt.Print(resetSequences())
+		}
 		return
 	}
 
@@ -315,9 +331,15 @@ func cmdHook(args []string) {
 		}
 	}
 
+	if titleOnly {
+		fmt.Print(title)
+		return
+	}
+
 	if dc.Color == "" {
-		// Just set the title if color is empty
-		fmt.Printf("\033]0;%s\a", title)
+		if !noTitle {
+			fmt.Printf("\033]0;%s\a", title)
+		}
 		return
 	}
 
@@ -325,7 +347,11 @@ func cmdHook(args []string) {
 	r, g, b := parseHex(dc.Color)
 	fr, fg, fb := contrastColor(r, g, b)
 
-	fmt.Print(colorSequences(r, g, b, fr, fg, fb, title))
+	titleArg := title
+	if noTitle {
+		titleArg = ""
+	}
+	fmt.Print(colorSequences(r, g, b, fr, fg, fb, titleArg))
 }
 
 // ─── Terminal Detection ──────────────────────────────────────────────────────
@@ -376,7 +402,9 @@ func colorSequences(r, g, b, fr, fg, fb uint8, title string) string {
 	}
 
 	// OSC 0: set window/tab title (universal)
-	fmt.Fprintf(&s, "\033]0;%s\a", title)
+	if title != "" {
+		fmt.Fprintf(&s, "\033]0;%s\a", title)
+	}
 
 	return s.String()
 }
@@ -635,11 +663,13 @@ func hookSnippet(shell string) string {
 			"    $updateTime = $null\n" +
 			"    if (Test-Path $updateFile) { $updateTime = (Get-Item $updateFile).LastWriteTime }\n" +
 			"    if ($global:__ttag_last_pwd -ne $currentPwd -or $global:__ttag_last_update -ne $updateTime) {\n" +
-			"        $__ttag_o = & ttag hook \"$currentPwd\" 2>$null\n" +
+			"        $__ttag_o = & ttag hook --no-title \"$currentPwd\" 2>$null\n" +
 			"        if ($__ttag_o) { [Console]::Write($__ttag_o -join '') }\n" +
+			"        $global:__ttag_title_prefix = (& ttag hook --title-only \"$currentPwd\" 2>$null) -join ''\n" +
 			"        $global:__ttag_last_pwd = $currentPwd\n" +
 			"        $global:__ttag_last_update = $updateTime\n" +
 			"    }\n" +
+			"    if ($global:__ttag_title_prefix) { $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
 			"    if ($__ttag_orig_prompt) { & $__ttag_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
 			"}\n" +
@@ -658,9 +688,13 @@ func hookSnippet(shell string) string {
 			"    fi\n" +
 			"  fi\n" +
 			"  if [[ \"$PWD\" != \"$__ttag_last_pwd\" ]] || [[ \"$update_time\" != \"$__ttag_last_update\" ]]; then\n" +
-			"    ttag hook \"$PWD\"\n" +
+			"    ttag hook --no-title \"$PWD\"\n" +
+			"    __ttag_title_prefix=$(ttag hook --title-only \"$PWD\" 2>/dev/null)\n" +
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"    export __ttag_last_update=\"$update_time\"\n" +
+			"  fi\n" +
+			"  if [[ -n \"$__ttag_title_prefix\" ]]; then\n" +
+			"    printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
 			"  fi\n" +
 			"}\n" +
 			"autoload -Uz add-zsh-hook\n" +
@@ -680,9 +714,13 @@ func hookSnippet(shell string) string {
 			"    fi\n" +
 			"  fi\n" +
 			"  if [ \"$PWD\" != \"$__ttag_last_pwd\" ] || [ \"$update_time\" != \"$__ttag_last_update\" ]; then\n" +
-			"    ttag hook \"$PWD\"\n" +
+			"    ttag hook --no-title \"$PWD\"\n" +
+			"    __ttag_title_prefix=$(ttag hook --title-only \"$PWD\" 2>/dev/null)\n" +
 			"    export __ttag_last_pwd=\"$PWD\"\n" +
 			"    export __ttag_last_update=\"$update_time\"\n" +
+			"  fi\n" +
+			"  if [ -n \"$__ttag_title_prefix\" ]; then\n" +
+			"    printf '\\033]0;%s\\a' \"$__ttag_title_prefix\"\n" +
 			"  fi\n" +
 			"}\n" +
 			"PROMPT_COMMAND=\"__ttag_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"\n" +
