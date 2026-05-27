@@ -16,7 +16,7 @@ import (
 const (
 	hookMarkerStart = "# ttag hook - start"
 	hookMarkerEnd   = "# ttag hook - end"
-	version         = "1.1.0"
+	version         = "1.1.1"
 	focusIndicator  = "●"
 )
 
@@ -395,24 +395,20 @@ func colorSequences(r, g, b, fr, fg, fb uint8, title string) string {
 
 	switch t {
 	case termITerm2:
-		// iTerm2 proprietary: set tab background color per-channel
 		fmt.Fprintf(&s, "\033]6;1;bg;red;brightness;%d\a", r)
 		fmt.Fprintf(&s, "\033]6;1;bg;green;brightness;%d\a", g)
 		fmt.Fprintf(&s, "\033]6;1;bg;blue;brightness;%d\a", b)
-		// iTerm2 handles text contrast automatically
 
 	case termWindowsTerminal:
-		// Palette index 264 = tab background, 263 = tab foreground
+		// WT extended palette: 264 = tab background, 263 = tab foreground (PR #13058)
 		fmt.Fprintf(&s, "\033]4;264;rgb:%02x/%02x/%02x\a", r, g, b)
 		fmt.Fprintf(&s, "\033]4;263;rgb:%02x/%02x/%02x\a", fr, fg, fb)
 
 	default:
-		// Standard OSC 4 — works in GNOME Terminal, Konsole, and many others
-		fmt.Fprintf(&s, "\033]4;264;rgb:%02x/%02x/%02x\a", r, g, b)
-		fmt.Fprintf(&s, "\033]4;263;rgb:%02x/%02x/%02x\a", fr, fg, fb)
+		fmt.Fprintf(&s, "\033]11;rgb:%02x/%02x/%02x\a", r, g, b)
+		fmt.Fprintf(&s, "\033]10;rgb:%02x/%02x/%02x\a", fr, fg, fb)
 	}
 
-	// OSC 0: set window/tab title (universal)
 	if title != "" {
 		fmt.Fprintf(&s, "\033]0;%s\a", title)
 	}
@@ -427,9 +423,11 @@ func resetSequences() string {
 	switch t {
 	case termITerm2:
 		s.WriteString("\033]6;1;bg;*;default\a")
-	default:
-		// OSC 104: reset palette entries 263 and 264
+	case termWindowsTerminal:
 		s.WriteString("\033]104;263;264\a")
+	default:
+		s.WriteString("\033]110\a")
+		s.WriteString("\033]111\a")
 	}
 
 	return s.String()
@@ -696,27 +694,9 @@ func hookSnippet(shell string) string {
 	switch shell {
 	case "powershell":
 		return hookMarkerStart + "\n" + versionLine +
-			"$global:__ttag_focused = $true\n" +
-			"[Console]::Write(\"$([char]27)[?1004h\")\n" +
-			"if (Get-Module PSReadLine) {\n" +
-			"    Set-PSReadLineKeyHandler -Chord \"$([char]27)[I\" -ScriptBlock {\n" +
-			"        $global:__ttag_focused = $true\n" +
-			"        if ($global:__ttag_title_prefix) {\n" +
-			"            $Host.UI.RawUI.WindowTitle = \"$([char]0x25CF) $($global:__ttag_title_prefix)\"\n" +
-			"        }\n" +
-			"    }\n" +
-			"    Set-PSReadLineKeyHandler -Chord \"$([char]27)[O\" -ScriptBlock {\n" +
-			"        $global:__ttag_focused = $false\n" +
-			"        if ($global:__ttag_title_prefix) {\n" +
-			"            $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix\n" +
-			"        }\n" +
-			"    }\n" +
-			"}\n" +
-			"Register-EngineEvent PowerShell.Exiting -Action { [Console]::Write(\"$([char]27)[?1004l\") } | Out-Null\n" +
 			"$__ttag_orig_prompt = $function:prompt\n" +
 			"function global:prompt {\n" +
 			"    $origExit = $LASTEXITCODE\n" +
-			"    [Console]::Write(\"$([char]27)[?1004h\")\n" +
 			"    $currentPwd = $executionContext.SessionState.Path.CurrentLocation.Path\n" +
 			"    $updateFile = \"$HOME\\.ttag_update\"\n" +
 			"    $updateTime = $null\n" +
@@ -728,14 +708,10 @@ func hookSnippet(shell string) string {
 			"        $global:__ttag_last_pwd = $currentPwd\n" +
 			"        $global:__ttag_last_update = $updateTime\n" +
 			"    }\n" +
-			"    if ($global:__ttag_title_prefix) {\n" +
-			"        if ($global:__ttag_focused) {\n" +
-			"            $Host.UI.RawUI.WindowTitle = \"$([char]0x25CF) $($global:__ttag_title_prefix)\"\n" +
-			"        } else {\n" +
-			"            $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix\n" +
-			"        }\n" +
-			"    }\n" +
 			"    $global:LASTEXITCODE = $origExit\n" +
+			"    if ($global:__ttag_title_prefix) {\n" +
+			"        $Host.UI.RawUI.WindowTitle = $global:__ttag_title_prefix\n" +
+			"    }\n" +
 			"    if ($__ttag_orig_prompt) { & $__ttag_orig_prompt } else { \"PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) \" }\n" +
 			"}\n" +
 			hookMarkerEnd

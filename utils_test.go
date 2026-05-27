@@ -62,13 +62,19 @@ func TestColorSequences(t *testing.T) {
 	os.Setenv("WT_SESSION", "1")
 	seq = colorSequences(255, 0, 0, 255, 255, 255, "Test")
 	if !strings.Contains(seq, "4;264;rgb:ff/00/00") {
-		t.Errorf("Expected Windows Terminal sequence, got %q", seq)
+		t.Errorf("Expected WT palette 264 for tab bg, got %q", seq)
+	}
+	if !strings.Contains(seq, "4;263;rgb:ff/ff/ff") {
+		t.Errorf("Expected WT palette 263 for tab fg, got %q", seq)
 	}
 	os.Unsetenv("WT_SESSION")
 
 	seq = colorSequences(255, 0, 0, 255, 255, 255, "Test")
-	if !strings.Contains(seq, "4;264;rgb:ff/00/00") {
-		t.Errorf("Expected standard OSC 4 sequence, got %q", seq)
+	if !strings.Contains(seq, "11;rgb:ff/00/00") {
+		t.Errorf("Expected OSC 11 background sequence, got %q", seq)
+	}
+	if !strings.Contains(seq, "10;rgb:ff/ff/ff") {
+		t.Errorf("Expected OSC 10 foreground sequence, got %q", seq)
 	}
 }
 
@@ -80,9 +86,19 @@ func TestResetSequences(t *testing.T) {
 	}
 	os.Unsetenv("TERM_PROGRAM")
 
+	os.Setenv("WT_SESSION", "1")
 	seq = resetSequences()
 	if !strings.Contains(seq, "104;263;264") {
-		t.Errorf("Expected standard reset, got %q", seq)
+		t.Errorf("Expected WT palette reset, got %q", seq)
+	}
+	os.Unsetenv("WT_SESSION")
+
+	seq = resetSequences()
+	if !strings.Contains(seq, "110") {
+		t.Errorf("Expected OSC 110 foreground reset, got %q", seq)
+	}
+	if !strings.Contains(seq, "111") {
+		t.Errorf("Expected OSC 111 background reset, got %q", seq)
 	}
 }
 
@@ -155,11 +171,8 @@ func TestHookSnippet(t *testing.T) {
 	if !strings.Contains(ps, "global:prompt") {
 		t.Errorf("Expected PowerShell hook")
 	}
-	if !strings.Contains(ps, "?1004h") {
-		t.Errorf("Expected focus reporting enable in PowerShell hook")
-	}
-	if !strings.Contains(ps, "__ttag_focused") {
-		t.Errorf("Expected focus tracking in PowerShell hook")
+	if strings.Contains(ps, "__ttag_focused") {
+		t.Errorf("PowerShell hook should not contain focus tracking (PSReadLine cannot bind escape sequences)")
 	}
 
 	zsh := hookSnippet("zsh")
