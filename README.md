@@ -1,3 +1,5 @@
+[![Platform](https://img.shields.io/badge/platform-windows%20%7C%20macos%20%7C%20linux-blue)](https://github.com/dpkay-io/ttag) [![License](https://img.shields.io/github/license/dpkay-io/ttag)](https://github.com/dpkay-io/ttag) [![Productivity](https://img.shields.io/badge/productivity-blue)](https://github.com/dpkay-io/ttag) [![Developer Tools](https://img.shields.io/badge/developer--tools-2ea44f)](https://github.com/dpkay-io/ttag) [![Downloads](https://img.shields.io/github/downloads/dpkay-io/ttag/total)](https://github.com/dpkay-io/ttag) [![Release](https://img.shields.io/github/v/release/dpkay-io/ttag)](https://github.com/dpkay-io/ttag)
+
 # ttag — Terminal Tab Tagger
 
 ![Demo](cli.png)
